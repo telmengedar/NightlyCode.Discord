@@ -1,14 +1,14 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="14.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>49005c53-58de-47b8-a0e6-d63f17d7e5c7</ProjectGuid>
+    <ProjectGuid>{49005C53-58DE-47B8-A0E6-D63F17D7E5C7}</ProjectGuid>
     <OutputType>Library</OutputType>
     <AppDesignerFolder>Properties</AppDesignerFolder>
-    <RootNamespace>Discord</RootNamespace>
-    <AssemblyName>Discord</AssemblyName>
+    <RootNamespace>NightlyCode.Discord</RootNamespace>
+    <AssemblyName>NightlyCode.Discord</AssemblyName>
     <TargetFrameworkVersion>v4.5.2</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
   </PropertyGroup>
@@ -30,24 +30,70 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="System"/>
-    
-    <Reference Include="System.Core"/>
-    <Reference Include="System.Xml.Linq"/>
-    <Reference Include="System.Data.DataSetExtensions"/>
-    
-    
-    <Reference Include="Microsoft.CSharp"/>
-    
-    <Reference Include="System.Data"/>
-    
-    <Reference Include="System.Net.Http"/>
-    
-    <Reference Include="System.Xml"/>
+    <Reference Include="NightlyCode.Core">
+      <HintPath>..\..\..\Compiled\Library\NightlyCode.Core.dll</HintPath>
+    </Reference>
+    <Reference Include="NightlyCode.Japi">
+      <HintPath>$(DevDir)\Compiled\Library\NightlyCode.Japi.dll</HintPath>
+    </Reference>
+    <Reference Include="System" />
+    <Reference Include="System.Core" />
+    <Reference Include="System.Xml.Linq" />
+    <Reference Include="System.Data.DataSetExtensions" />
+    <Reference Include="Microsoft.CSharp" />
+    <Reference Include="System.Data" />
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Xml" />
+    <Reference Include="websocket-sharp">
+      <HintPath>..\..\..\Extern\Websocket-Sharp\websocket-sharp-master\websocket-sharp\bin\Release\websocket-sharp.dll</HintPath>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Class1.cs" />
+    <Compile Include="Data\DataExtensions.cs" />
+    <Compile Include="Data\Guild.cs" />
+    <Compile Include="Data\GuildUser.cs" />
+    <Compile Include="Data\GuildMember.cs" />
+    <Compile Include="Data\PresenceUpdate.cs" />
+    <Compile Include="Data\Status.cs" />
+    <Compile Include="Data\UnavailableGuild.cs" />
+    <Compile Include="Data\VoiceState.cs" />
+    <Compile Include="Logger.cs" />
+    <Compile Include="Data\Activities\Activity.cs" />
+    <Compile Include="Data\Activities\ActivityAsset.cs" />
+    <Compile Include="Data\Activities\ActivityParty.cs" />
+    <Compile Include="Data\Activities\ActivityTimestamps.cs" />
+    <Compile Include="Data\Activities\ActivityType.cs" />
+    <Compile Include="Data\Attachment.cs" />
+    <Compile Include="Data\Channels\Channel.cs" />
+    <Compile Include="Data\Channels\ChannelType.cs" />
+    <Compile Include="Data\Channels\CreateMessageBody.cs" />
+    <Compile Include="Data\Channels\CreateRichMessageBody.cs" />
+    <Compile Include="Data\Channels\GetMessagesParameter.cs" />
+    <Compile Include="Data\Channels\Overwrite.cs" />
+    <Compile Include="Rest\DiscordRest.cs" />
+    <Compile Include="Data\Embeds\Embed.cs" />
+    <Compile Include="Data\Embeds\EmbedAuthor.cs" />
+    <Compile Include="Data\Embeds\EmbedField.cs" />
+    <Compile Include="Data\Embeds\EmbedFooter.cs" />
+    <Compile Include="Data\Embeds\EmbedImage.cs" />
+    <Compile Include="Data\Embeds\EmbedProvider.cs" />
+    <Compile Include="Data\Embeds\EmbedThumbnail.cs" />
+    <Compile Include="Data\Embeds\EmbedVideo.cs" />
+    <Compile Include="Data\Emoji.cs" />
+    <Compile Include="Rest\IParameterObject.cs" />
+    <Compile Include="Data\Message.cs" />
+    <Compile Include="Data\MessageType.cs" />
+    <Compile Include="Rest\Parameter.cs" />
+    <Compile Include="Rest\RateLimitError.cs" />
+    <Compile Include="Rest\RateLimitException.cs" />
+    <Compile Include="Data\Reaction.cs" />
+    <Compile Include="Rest\RequestError.cs" />
+    <Compile Include="Rest\RequestLimit.cs" />
+    <Compile Include="Data\Role.cs" />
+    <Compile Include="Data\User.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Websockets\DiscordWebsocket.cs" />
+    <Compile Include="Websockets\Opcode.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
@@ -57,5 +103,7 @@
   <Target Name="AfterBuild">
   </Target>
   -->
-
- </Project>
+  <Target Name="AfterBuild">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(DevDir)\Compiled\Library\" />
+  </Target>
+</Project>
