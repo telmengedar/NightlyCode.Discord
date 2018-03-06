@@ -18,7 +18,7 @@ Connection to Discord doesn't require much explanation. The following code conne
 
 ```
 
-DiscordWebsocket websocket = new DiscordWebsocket(DiscordConstants.BotToken);
+DiscordWebsocket websocket = new DiscordWebsocket(<Token>);
 websocket.Connect();
 
 ```
