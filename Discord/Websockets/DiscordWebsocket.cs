@@ -229,6 +229,13 @@ namespace NightlyCode.Discord.Websockets
             new Task(InternalConnect).Start();
         }
 
+        /// <summary>
+        /// disconnects this socket
+        /// </summary>
+        public void Disconnect() {
+            Disconnect(0xFFFF, "Manual Disconnect", false);
+        }
+
         void InternalConnect() {
             Logger.Info(this, "Connecting to discord");
             try
