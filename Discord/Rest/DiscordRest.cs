@@ -61,13 +61,14 @@ namespace NightlyCode.Discord.Rest {
         }
 
         T Request<T>(string route, string endpoint, string post, params Parameter[] parameters) {
-            do {
-                try {
-                    return RequestInternal<T>(route, endpoint, post, parameters);
-                }
-                catch(RateLimitException) {}
+            try {
+                return RequestInternal<T>(route, endpoint, post, parameters);
             }
-            while(true);
+            catch(RateLimitException) {
+
+            }
+
+            return default(T);
         }
 
         T RequestInternal<T>(string route, string endpoint, string post, params Parameter[] parameters) {
@@ -96,11 +97,10 @@ namespace NightlyCode.Discord.Rest {
                 }
             }
             catch(WebException e) {
-                HttpWebResponse response = e.Response as HttpWebResponse;
-                if(response != null) {
+                if(e.Response is HttpWebResponse response) {
                     if((int)response.StatusCode == 429) {
                         RateLimitError error = JSON.Read<RateLimitError>(response.GetResponseStream());
-                        Logger.Warning(this, error.Message);
+                        Logger.Warning(this, $"{response.StatusCode}", error.Message);
 
                         if (error.Global) {
                             lock(limiterlock) {
@@ -114,7 +114,7 @@ namespace NightlyCode.Discord.Rest {
                     }
                     else {
                         RequestError error = JSON.Read<RequestError>(response.GetResponseStream());
-                        Logger.Warning(this, error.Message);
+                        Logger.Warning(this, $"{response.StatusCode}", error.Message);
                     }
                     ParseRateLimits(route, response.Headers);
                 }
@@ -132,24 +132,21 @@ namespace NightlyCode.Discord.Rest {
             string headervalue = headers["X-RateLimit-Limit"];
             if (!string.IsNullOrEmpty(headervalue))
             {
-                int limit;
-                int.TryParse(headervalue, out limit);
+                int.TryParse(headervalue, out var limit);
                 requestlimit.Limit = limit;
             }
 
             headervalue = headers["X-RateLimit-Remaining"];
             if (!string.IsNullOrEmpty(headervalue))
             {
-                int remaining;
-                int.TryParse(headervalue, out remaining);
+                int.TryParse(headervalue, out var remaining);
                 requestlimit.Remaining = remaining;
             }
 
             headervalue = headers["X-RateLimit-Reset"];
             if (!string.IsNullOrEmpty(headervalue))
             {
-                int seconds;
-                int.TryParse(headervalue, out seconds);
+                int.TryParse(headervalue, out var seconds);
                 requestlimit.Reset = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc) + TimeSpan.FromSeconds(seconds);
             }
         }
