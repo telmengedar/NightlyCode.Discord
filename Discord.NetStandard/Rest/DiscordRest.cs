@@ -19,8 +19,11 @@ namespace NightlyCode.Discord.Rest {
         readonly string token;
 
         readonly object limiterlock = new object();
-        readonly Dictionary<string, RequestLimit> limiters = new Dictionary<string, RequestLimit>();
-         
+
+        RequestLimit limiter = new RequestLimit();
+        //readonly Dictionary<string, RequestLimit> limiters = new Dictionary<string, RequestLimit>();
+        
+
         /// <summary>
         /// creates a new <see cref="DiscordRest"/> access
         /// </summary>
@@ -31,7 +34,7 @@ namespace NightlyCode.Discord.Rest {
             this.token = token;
         }
 
-        void EnterRequest(string route) {
+        /*void EnterRequest(string route) {
             RequestLimit limit;
             lock (limiterlock) {
                 if(!limiters.TryGetValue(route, out limit))
@@ -51,12 +54,12 @@ namespace NightlyCode.Discord.Rest {
                     Thread.Sleep(timetoreset);
                 }
             }
-        }
+        }*/
 
-        void ExitRequest(string route) {
+        /*void ExitRequest(string route) {
             lock(limiterlock)
                 Monitor.Exit(limiters[route].Lock);
-        }
+        }*/
 
         T Request<T>(string route, string endpoint, params Parameter[] parameters) {
             return Request<T>(route, endpoint, null, parameters);
@@ -74,62 +77,70 @@ namespace NightlyCode.Discord.Rest {
         }
 
         T RequestInternal<T>(string route, string endpoint, string post, params Parameter[] parameters) {
-            EnterRequest(route);
-            try {
-                using(WebClient wc = new WebClient()) {
-                    wc.Headers.Add("User-Agent", "StreamRC (http://www.nightlycode.de, v0.2)");
-                    //wc.Headers.Add("Client-ID", clientid);
-                    wc.Headers.Add("Authorization", $"{(botaccess ? "Bot" : "Bearer")} {token}");
-
-                    if(parameters != null)
-                        foreach(Parameter parameter in parameters)
-                            wc.QueryString.Add(parameter.Key, parameter.Value);
-
-                    string response;
-                    if (!string.IsNullOrEmpty(post)) {
-                        wc.Headers[HttpRequestHeader.Accept] = "application/json";
-                        wc.Headers[HttpRequestHeader.ContentType] = "application/json";
-                        response = wc.UploadString($"{url}/{route}/{endpoint}", post);
+            lock (limiterlock) {
+                while (DateTime.Now < limiter.Reset) {
+                    TimeSpan timetoreset = limiter.Reset - DateTime.Now;
+                    if (timetoreset.TotalSeconds > 0.0) {
+                        Logger.Warning(this, $"Well, rate limits have been hit ... watiting for {timetoreset} now.");
+                        Thread.Sleep(timetoreset);
                     }
-                    else response = wc.DownloadString($"{url}/{route}/{endpoint}");
-
-                    ParseRateLimits(route, wc.ResponseHeaders);
-
-                    return JSON.Read<T>(response);
                 }
-            }
-            catch(WebException e) {
-                if(e.Response is HttpWebResponse response) {
-                    if((int)response.StatusCode == 429) {
-                        RateLimitError error = JSON.Read<RateLimitError>(response.GetResponseStream());
-                        Logger.Warning(this, $"{response.StatusCode}", error.Message);
 
-                        if (error.Global) {
-                            lock(limiterlock) {
-                                Thread.Sleep(error.RetryAfter);
+                try
+                {
+                    using (WebClient wc = new WebClient()) {
+                        wc.Headers.Add("User-Agent", "StreamRC (http://www.nightlycode.de, v0.2)");
+                        //wc.Headers.Add("Client-ID", clientid);
+                        wc.Headers.Add("Authorization", $"{(botaccess ? "Bot" : "Bearer")} {token}");
+
+                        if (parameters != null)
+                            foreach (Parameter parameter in parameters)
+                                wc.QueryString.Add(parameter.Key, parameter.Value);
+
+                        string response;
+                        if (!string.IsNullOrEmpty(post)) {
+                            wc.Headers[HttpRequestHeader.Accept] = "application/json";
+                            wc.Headers[HttpRequestHeader.ContentType] = "application/json";
+                            response = wc.UploadString($"{url}/{route}/{endpoint}", post);
+                        }
+                        else response = wc.DownloadString($"{url}/{route}/{endpoint}");
+
+                        ParseRateLimits(route, wc.ResponseHeaders);
+
+                        return JSON.Read<T>(response);
+                    }
+                }
+                catch (WebException e) {
+                    if (e.Response is HttpWebResponse response) {
+                        if ((int) response.StatusCode == 429) {
+                            RateLimitError error = JSON.Read<RateLimitError>(response.GetResponseStream());
+                            Logger.Warning(this, $"{response.StatusCode}", error.Message);
+
+                            if (error.Global) {
+                                lock (limiterlock) {
+                                    Thread.Sleep(error.RetryAfter);
+                                }
+                            }
+                            else {
+                                limiter.Remaining = 0;
+                                limiter.Reset= DateTime.Now + TimeSpan.FromMilliseconds(error.RetryAfter);
                             }
                         }
                         else {
-                            limiters[route].Remaining = 0;
-                            limiters[route].Reset = DateTime.Now + TimeSpan.FromMilliseconds(error.RetryAfter);
+                            RequestError error = JSON.Read<RequestError>(response.GetResponseStream());
+                            Logger.Warning(this, $"{response.StatusCode}", error.Message);
                         }
-                    }
-                    else {
-                        RequestError error = JSON.Read<RequestError>(response.GetResponseStream());
-                        Logger.Warning(this, $"{response.StatusCode}", error.Message);
-                    }
-                    ParseRateLimits(route, response.Headers);
-                }
 
-                throw new RateLimitException("Rate limit was hit. Limiters should have been updated, so an immediate retry will sleep until rate limit is supposed to be reset.");
-            }
-            finally {
-                ExitRequest(route);
+                        ParseRateLimits(route, response.Headers);
+                    }
+
+                    throw new RateLimitException("Rate limit was hit. Limiters should have been updated, so an immediate retry will sleep until rate limit is supposed to be reset.");
+                }
             }
         }
 
         void ParseRateLimits(string route, WebHeaderCollection headers) {
-            RequestLimit requestlimit = limiters[route];
+            RequestLimit requestlimit = limiter;
 
             string headervalue = headers["X-RateLimit-Limit"];
             if (!string.IsNullOrEmpty(headervalue))
