@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using NightlyCode.Core.Threading;
 using NightlyCode.Discord.Data;
 using NightlyCode.Discord.Data.Channels;
+using NightlyCode.Japi.Extensions;
 using NightlyCode.Japi.Json;
 using WebSocketSharp;
 
@@ -278,7 +279,7 @@ namespace NightlyCode.Discord.Websockets
                 ++disconnects;
                 if(reconnect && disconnects < 5) {
                     double time = Math.Pow(2, disconnects);
-                    Logger.Info(this, $"Reconnecting in {time.ToString("F")} seconds.");
+                    Logger.Info(this, $"Reconnecting in {time:F} seconds.");
                     Thread.Sleep(TimeSpan.FromSeconds(time));
                     Connect();
                 }
@@ -319,19 +320,19 @@ namespace NightlyCode.Discord.Websockets
             }
         }
 
-        void OnMessage(object sender, MessageEventArgs e)
-        {
+        void OnMessage(object sender, MessageEventArgs e) {
+            JsonNode payload = null;
             try {
                 using (MemoryStream ms = new MemoryStream(e.RawData))
                 {
-                    JsonNode payload = JSON.ReadNodeFromStream(ms);
+                    payload = JSON.ReadNodeFromStream(ms);
                     switch (payload.SelectValue<Opcode>("op"))
                     {
                         case Opcode.Dispatch:
-                            OnEvent(payload.SelectValue<string>("t"), payload.SelectValue<int>("s"), payload["d"]);
+                            OnEvent(payload.SelectValue<string>("t"), payload.SelectValue<int>("s"), payload.SelectNode("d"));
                             break;
                         case Opcode.Hello:
-                            OnHello(payload["d"].SelectValue<int>("heartbeat_interval"));
+                            OnHello(payload.SelectSingle<int>("d/heartbeat_interval"));
                             break;
                         case Opcode.HeartbeatAck:
                             missedheartbeats = 0;
@@ -344,7 +345,7 @@ namespace NightlyCode.Discord.Websockets
                 }
             }
             catch (Exception ex) {
-                Logger.Error(this, "Unable to handle discord message", ex);
+                Logger.Error(this, $"Unable to handle discord message: {payload}", ex);
             }
         }
 
@@ -437,7 +438,7 @@ namespace NightlyCode.Discord.Websockets
                     UserUnbanned?.Invoke(JSON.Serializer.Read<GuildUser>(data));
                     break;
                 case "GUILD_EMOJIS_UPDATE":
-                    EmojisUpdated?.Invoke(data.SelectValue<string>("guild_id"), JSON.Serializer.Read<Emoji[]>(data["emojis"]));
+                    EmojisUpdated?.Invoke(data.SelectValue<string>("guild_id"), JSON.Serializer.Read<Emoji[]>(data.SelectNode("emojis")));
                     break;
                 case "GUILD_INTEGRATIONS_UPDATE":
                     GuildIntegrationsUpdated?.Invoke(data.SelectValue<string>("guild_id"));
@@ -449,25 +450,25 @@ namespace NightlyCode.Discord.Websockets
                     GuildMemberRemoved?.Invoke(data.SelectValue<string>("guild_id"), JSON.Serializer.Read<User>(data));
                     break;
                 case "GUILD_MEMBER_UPDATE":
-                    GuildMemberUpdated?.Invoke(data.SelectValue<string>("guild_id"), JSON.Serializer.Read<Role[]>(data["roles"]), JSON.Serializer.Read<User>(data["user"]), data.SelectValue<string>("nick"));
+                    GuildMemberUpdated?.Invoke(data.SelectValue<string>("guild_id"), JSON.Serializer.Read<Role[]>(data.SelectNode("roles")), JSON.Serializer.Read<User>(data.SelectNode("user")), data.SelectValue<string>("nick"));
                     break;
                 case "GUILD_MEMBERS_CHUNK":
-                    GuildMembersChunk?.Invoke(data.SelectValue<string>("guild_id"), JSON.Serializer.Read<GuildMember[]>(data["members"]));
+                    GuildMembersChunk?.Invoke(data.SelectValue<string>("guild_id"), JSON.Serializer.Read<GuildMember[]>(data.SelectNode("members")));
                     break;
                 case "GUILD_ROLE_CREATE":
-                    GuildRoleCreated?.Invoke(data.SelectValue<string>("guild_id"), JSON.Serializer.Read<Role>(data["role"]));
+                    GuildRoleCreated?.Invoke(data.SelectValue<string>("guild_id"), JSON.Serializer.Read<Role>(data.SelectNode("role")));
                     break;
                 case "GUILD_ROLE_UPDATE":
-                    GuildRoleUpdated?.Invoke(data.SelectValue<string>("guild_id"), JSON.Serializer.Read<Role>(data["role"]));
+                    GuildRoleUpdated?.Invoke(data.SelectValue<string>("guild_id"), JSON.Serializer.Read<Role>(data.SelectNode("role")));
                     break;
                 case "GUILD_ROLE_DELETE":
                     GuildRoleDeleted?.Invoke(data.SelectValue<string>("guild_id"), data.SelectValue<string>("role_id"));
                     break;
                 case "MESSAGE_REACTION_ADD":
-                    MessageReactionAdded?.Invoke(data.SelectValue<string>("user_id"), data.SelectValue<string>("channel_id"), data.SelectValue<string>("message_id"), JSON.Serializer.Read<Emoji>(data["emoji"]));
+                    MessageReactionAdded?.Invoke(data.SelectValue<string>("user_id"), data.SelectValue<string>("channel_id"), data.SelectValue<string>("message_id"), JSON.Serializer.Read<Emoji>(data.SelectNode("emoji")));
                     break;
                 case "MESSAGE_REACTION_REMOVE":
-                    MessageReactionRemoved?.Invoke(data.SelectValue<string>("user_id"), data.SelectValue<string>("channel_id"), data.SelectValue<string>("message_id"), JSON.Serializer.Read<Emoji>(data["emoji"]));
+                    MessageReactionRemoved?.Invoke(data.SelectValue<string>("user_id"), data.SelectValue<string>("channel_id"), data.SelectValue<string>("message_id"), JSON.Serializer.Read<Emoji>(data.SelectNode("emoji")));
                     break;
                 case "MESSAGE_REACTION_REMOVE_ALL":
                     MessageReactionRemovedAll?.Invoke(data.SelectValue<string>("channel_id"), data.SelectValue<string>("message_id"));

@@ -1,28 +1,30 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFrameworks>netstandard2.0;net45</TargetFrameworks>
     <AssemblyName>NightlyCode.Discord</AssemblyName>
     <RootNamespace>NightlyCode.Discord</RootNamespace>
-    <Version>0.6.1</Version>
+    <Version>0.6.4</Version>
     <Authors>Toni Gottschall</Authors>
     <Company>NightlyCode</Company>
     <Description>Discord API</Description>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="NightlyCode.Core" Version="0.8.0" />
-    <PackageReference Include="NightlyCode.Japi" Version="0.8.5" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="websocket-sharp">
-      <HintPath>..\..\websocket-sharp.dll</HintPath>
-    </Reference>
-  </ItemGroup>
-
   <Target Name="PostPackNugetDeploy" AfterTargets="Pack" Condition="'$(Configuration)' == 'Release'">
-    <Copy SourceFiles="$(OutputPath)..\$(PackageId).$(PackageVersion).nupkg" DestinationFolder="$(DevDir)\NuGet\" />
+    <Copy SourceFiles="$(OutputPath)$(PackageId).$(PackageVersion).nupkg" DestinationFolder="$(DevDir)\NuGet\" />
   </Target>
+
+  <ItemGroup>
+    <PackageReference Include="NightlyCode.Core" Version="0.8.10" />
+    <PackageReference Include="NightlyCode.Japi" Version="0.9.4-preview" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)'=='net45'">
+    <PackageReference Include="WebSocketSharp" Version="1.0.3-rc11" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)'=='netstandard2.0'">
+    <PackageReference Include="WebSocketSharp-netstandard" Version="1.0.1" />
+  </ItemGroup>
 </Project>
