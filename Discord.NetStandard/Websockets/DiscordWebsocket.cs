@@ -1,21 +1,20 @@
 ﻿using System;
 using System.IO;
+using System.Net.WebSockets;
 using System.Threading;
 using System.Threading.Tasks;
-using NightlyCode.Core.Threading;
 using NightlyCode.Discord.Data;
 using NightlyCode.Discord.Data.Channels;
 using NightlyCode.Japi.Extensions;
 using NightlyCode.Japi.Json;
-using WebSocketSharp;
+using Websocket.Client;
 
 namespace NightlyCode.Discord.Websockets
 {
     public class DiscordWebsocket
     {
         readonly string token;
-        readonly WebSocket socket = new WebSocket("wss://gateway.discord.gg/?v=6&encoding=json");
-        readonly PeriodicTimer heartbeattimer = new PeriodicTimer();
+        readonly WebsocketClient socket = new WebsocketClient(new Uri("wss://gateway.discord.gg/?v=8&encoding=json"));
         int sequence = -1;
 
         int disconnects;
@@ -28,6 +27,8 @@ namespace NightlyCode.Discord.Websockets
 
         readonly object connectionlock = new object();
 
+        CancellationTokenSource heartbeatsource;
+        
         /// <summary>
         /// websocket which connects to discord
         /// </summary>
@@ -35,9 +36,9 @@ namespace NightlyCode.Discord.Websockets
         public DiscordWebsocket(string token)
         {
             this.token = token;
-            socket.OnMessage += OnMessage;
-            socket.OnClose += OnClosed;
-            heartbeattimer.Elapsed += OnHeartbeat;
+            socket.MessageReceived.Subscribe(OnMessage);
+            socket.DisconnectionHappened.Subscribe(OnClosed);
+            socket.ReconnectionHappened.Subscribe(info => Logger.Info(this, "Reconnected"));
         }
 
         /// <summary>
@@ -45,9 +46,9 @@ namespace NightlyCode.Discord.Websockets
         /// </summary>
         public bool IsConnected { get; private set; }
 
-        void OnClosed(object sender, CloseEventArgs e) {
-            Logger.Warning(this, "Connection closed.", e.Reason);
-            OnDisconnected();
+        void OnClosed(DisconnectionInfo info) {
+            Logger.Warning(this, $"Connection closed: {info.Type}, {info.CloseStatusDescription}", info.Exception?.ToString());
+            OnDisconnected(info.Type != DisconnectionType.ByUser);
         }
 
         public int GatewayVersion => gatewayversion;
@@ -241,21 +242,22 @@ namespace NightlyCode.Discord.Websockets
             Logger.Info(this, "Connecting to discord");
             try
             {
-                socket.Connect();
+                socket.Start();
             }
-            catch (Exception)
-            {
+            catch (Exception e) {
+                Logger.Error(this, "Error connecting to discord", e);
                 OnDisconnected();
             }
         }
 
         void Disconnect(ushort code, string reason, bool reconnect) {
-            Logger.Warning(this, "Disconnecting", reason);
-            socket.Close(code, reason);
+            Logger.Warning(this, $"Disconnecting: {code}", reason);
+            socket.Stop((WebSocketCloseStatus)code, reason);
             OnDisconnected(reconnect);
         }
 
         void OnConnected() {
+            Logger.Info(this, "Connected");
             lock(connectionlock) {
                 if(IsConnected)
                     return;
@@ -273,7 +275,11 @@ namespace NightlyCode.Discord.Websockets
 
                 IsConnected = false;
 
-                heartbeattimer.Stop();
+                if (heartbeatsource != null) {
+                    heartbeatsource.Cancel();
+                    heartbeatsource = null;
+                }
+
                 heartbeatacknowledged = false;
                 
                 ++disconnects;
@@ -287,26 +293,31 @@ namespace NightlyCode.Discord.Websockets
             }
         }
 
-        void OnHeartbeat()
-        {
-            if (!heartbeatacknowledged) {
-                ++missedheartbeats;
-                if(missedheartbeats >= 3) {
-                    Disconnect(1020, "To many heartbeats not acknowledged", true);
-                    return;
+        async Task OnHeartbeat(int milliseconds, CancellationToken cancellationtoken) {
+            //await Task.Delay(milliseconds*0.5, cancellationtoken);
+            while (!cancellationtoken.IsCancellationRequested) {
+                if (!heartbeatacknowledged) {
+                    ++missedheartbeats;
+                    if (missedheartbeats >= 3) {
+                        Disconnect(1020, "To many heartbeats not acknowledged", true);
+                        return;
+                    }
                 }
+
+                if (IsConnected) {
+                    heartbeatacknowledged = false;
+
+                    JsonObject heartbeat = new JsonObject {
+                        ["op"] = new JsonValue(1)
+                    };
+                    if (sequence > -1)
+                        heartbeat["d"] = new JsonValue(sequence);
+
+                    SendPayload(Opcode.Heartbeat, heartbeat);
+                }
+
+                await Task.Delay(milliseconds, cancellationtoken);
             }
-
-            heartbeatacknowledged = false;
-
-            JsonObject heartbeat = new JsonObject
-            {
-                ["op"] = new JsonValue(1)
-            };
-            if (sequence > -1)
-                heartbeat["d"] = new JsonValue(sequence);
-
-            SendPayload(Opcode.Heartbeat, heartbeat);
         }
 
         void SendPayload(Opcode op, JsonObject data)
@@ -320,28 +331,39 @@ namespace NightlyCode.Discord.Websockets
             }
         }
 
-        void OnMessage(object sender, MessageEventArgs e) {
+        void OnMessage(ResponseMessage message) {
             JsonNode payload = null;
             try {
-                using (MemoryStream ms = new MemoryStream(e.RawData))
-                {
-                    payload = JSON.ReadNodeFromStream(ms);
-                    switch (payload.SelectValue<Opcode>("op"))
-                    {
-                        case Opcode.Dispatch:
-                            OnEvent(payload.SelectValue<string>("t"), payload.SelectValue<int>("s"), payload.SelectNode("d"));
-                            break;
-                        case Opcode.Hello:
-                            OnHello(payload.SelectSingle<int>("d/heartbeat_interval"));
-                            break;
-                        case Opcode.HeartbeatAck:
-                            missedheartbeats = 0;
-                            heartbeatacknowledged = true;
-                            break;
-                        default:
-                            Core.Logs.Logger.Warning(this, "Unhandled discord opcode");
-                            break;
-                    }
+                switch (message.MessageType) {
+                    case WebSocketMessageType.Binary:
+                        using (MemoryStream ms = new MemoryStream(message.Binary))
+                            payload = JSON.ReadNodeFromStream(ms);
+                        break;
+                    case WebSocketMessageType.Text:
+                        payload = JSON.ReadNodeFromString(message.Text);
+                        break;
+                    default:
+                        return;
+                }
+
+                Logger.Info(this, $"payload: {payload}");
+                switch (payload.SelectValue<Opcode>("op")) {
+                    case Opcode.Dispatch:
+                        OnEvent(payload.SelectValue<string>("t"), payload.SelectValue<int>("s"), payload.SelectNode("d"));
+                        break;
+                    case Opcode.Hello:
+                        OnHello(payload.SelectSingle<int>("d/heartbeat_interval"));
+                        break;
+                    case Opcode.HeartbeatAck:
+                        missedheartbeats = 0;
+                        heartbeatacknowledged = true;
+                        break;
+                    case Opcode.InvalidSession:
+                        socket.Reconnect();
+                        break;
+                    default:
+                        Logger.Warning(this, $"Unhandled discord opcode: {payload}");
+                        break;
                 }
             }
             catch (Exception ex) {
@@ -363,11 +385,12 @@ namespace NightlyCode.Discord.Websockets
                 JsonObject identify = new JsonObject
                 {
                     ["token"] = new JsonValue(token),
+                    ["intents"]=new JsonValue(513),
                     ["properties"] = new JsonObject
                     {
-                        ["$os"] = new JsonValue("Windows 10"),
-                        ["$browser"] = new JsonValue("StreamRC.Discord"),
-                        ["$device"] = new JsonValue("StreamRC.Discord")
+                        ["$os"] = new JsonValue("linux"),
+                        ["$browser"] = new JsonValue("Gangolf.DiscordService"),
+                        ["$device"] = new JsonValue("Gangolf.DiscordService")
                     },
                     ["presence"] = new JsonObject
                     {
@@ -379,7 +402,11 @@ namespace NightlyCode.Discord.Websockets
 
             missedheartbeats = 0;
             heartbeatacknowledged = true;
-            heartbeattimer.Start(TimeSpan.FromMilliseconds(heartbeat));
+            if (heartbeatsource != null)
+                heartbeatsource.Cancel();
+            heartbeatsource = new CancellationTokenSource();
+                
+            Task.Run(() => OnHeartbeat(heartbeat, heartbeatsource.Token));
         }
 
         void OnEvent(string eventname, int seq, JsonNode data)

@@ -1,7 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>netstandard2.0;net45</TargetFrameworks>
+    <TargetFrameworks>netstandard2.0</TargetFrameworks>
     <AssemblyName>NightlyCode.Discord</AssemblyName>
     <RootNamespace>NightlyCode.Discord</RootNamespace>
     <Version>0.6.4</Version>
@@ -9,22 +9,15 @@
     <Company>NightlyCode</Company>
     <Description>Discord API</Description>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageVersion>0.6.5</PackageVersion>
   </PropertyGroup>
-
-  <Target Name="PostPackNugetDeploy" AfterTargets="Pack" Condition="'$(Configuration)' == 'Release'">
-    <Copy SourceFiles="$(OutputPath)$(PackageId).$(PackageVersion).nupkg" DestinationFolder="$(DevDir)\NuGet\" />
-  </Target>
-
+  
   <ItemGroup>
-    <PackageReference Include="NightlyCode.Core" Version="0.8.10" />
-    <PackageReference Include="NightlyCode.Japi" Version="0.9.4-preview" />
+    <PackageReference Include="NightlyCode.Japi" Version="0.9.6-preview" />
+    <PackageReference Include="Websocket.Client" Version="4.3.32" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)'=='net45'">
     <PackageReference Include="WebSocketSharp" Version="1.0.3-rc11" />
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(TargetFramework)'=='netstandard2.0'">
-    <PackageReference Include="WebSocketSharp-netstandard" Version="1.0.1" />
   </ItemGroup>
 </Project>
